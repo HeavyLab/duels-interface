@@ -3,6 +3,7 @@ export const DEFAULT_SETTINGS = {
   maxStamina: 24,
   maxMomentum: 10,
   maxStanceGuard: 3,
+  automaticResolution: true,
   swapOpponentMomentum: -3,
   actionCosts: {
     staminaAbove0: {

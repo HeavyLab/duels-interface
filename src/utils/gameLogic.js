@@ -102,7 +102,7 @@ export function applyAction(fighters, fighterIndex, actionKey, settings) {
   });
 
   // --- Attack: automatically apply opponent response based on stance gap ---
-  if (actionKey === 'attack') {
+  if (actionKey === 'attack' && settings.automaticResolution !== false) {
     const STANCE_ORDER = ['high', 'mid', 'low'];
     const opponentIndex = 1 - fighterIndex;
     const opponent = newFighters[opponentIndex];

@@ -18,6 +18,7 @@ export default function FighterPanel({
   onToggleGuard,
   onNameChange,
   onStanceChange,
+  onIncrementGuard,
 }) {
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState(fighter.name);
@@ -171,6 +172,28 @@ export default function FighterPanel({
       {(fighter.startTurnsToGuardReset ?? 0) > 0 && (
         <div className="guard-reset-notice">
           🛡 Guard broken — clears after <strong>{fighter.startTurnsToGuardReset}</strong> of your own Start Turn{fighter.startTurnsToGuardReset > 1 ? 's' : ''}
+        </div>
+      )}
+
+      {/* ── Manual guard increment (when auto is off) ── */}
+      {settings.automaticResolution === false && (
+        <div className="guard-manual-row">
+          {STANCES.map(s => {
+            const guardVal = fighter.stanceGuard?.[s] ?? 0;
+            const maxGuard = settings.maxStanceGuard ?? 3;
+            const isFull = guardVal >= maxGuard;
+            return (
+              <button
+                key={s}
+                className={`guard-inc-btn${isFull ? ' guard-inc-btn-full' : ''}`}
+                onClick={() => !isFull && onIncrementGuard(fighterIndex, s)}
+                disabled={isFull}
+                title={isFull ? `${s} guard broken` : `+1 ${s} guard`}
+              >
+                +1 {s.charAt(0).toUpperCase() + s.slice(1)}
+              </button>
+            );
+          })}
         </div>
       )}
 

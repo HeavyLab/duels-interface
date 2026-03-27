@@ -161,6 +161,44 @@ function reducer(state, action) {
       };
     }
 
+    case 'TOGGLE_AUTO': {
+      return {
+        ...state,
+        settings: {
+          ...state.settings,
+          automaticResolution: !(state.settings.automaticResolution ?? true),
+        },
+      };
+    }
+
+    case 'INCREMENT_GUARD': {
+      const { fighterIndex, stance } = action;
+      const fighter = state.fighters[fighterIndex];
+      const maxGuard = state.settings.maxStanceGuard ?? 3;
+      const curVal = fighter.stanceGuard?.[stance] ?? 0;
+      if (curVal >= maxGuard) return state;
+      const newVal = curVal + 1;
+      const newGuard = { ...(fighter.stanceGuard ?? { high: 0, mid: 0, low: 0 }), [stance]: newVal };
+      const newStartTurns = newVal >= maxGuard ? 2 : (fighter.startTurnsToGuardReset ?? 0);
+      const logEntry = {
+        id: Date.now() + Math.random(),
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+        fighterName: fighter.name,
+        actionLabel: `Guard +1 ${stance.charAt(0).toUpperCase() + stance.slice(1)}`,
+        before: { health: fighter.health, stamina: fighter.stamina, momentum: fighter.momentum },
+        after:  { health: fighter.health, stamina: fighter.stamina, momentum: fighter.momentum },
+      };
+      return {
+        ...state,
+        fighters: state.fighters.map((f, i) =>
+          i === fighterIndex
+            ? { ...f, stanceGuard: newGuard, startTurnsToGuardReset: newStartTurns }
+            : f
+        ),
+        log: [logEntry, ...state.log],
+      };
+    }
+
     case 'CLEAR_LOG': {
       return { ...state, log: [] };
     }
@@ -225,6 +263,14 @@ export default function App() {
     dispatch({ type: 'CLEAR_LOG' });
   };
 
+  const handleToggleAuto = () => {
+    dispatch({ type: 'TOGGLE_AUTO' });
+  };
+
+  const handleIncrementGuard = (fighterIndex, stance) => {
+    dispatch({ type: 'INCREMENT_GUARD', fighterIndex, stance });
+  };
+
   // ─── Render ────────────────────────────────────────────────────────────────
   if (screen === 'settings') {
     return (
@@ -233,6 +279,7 @@ export default function App() {
         onUpdateMax={handleUpdateMax}
         onUpdateSwapOpponent={handleUpdateSwapOpponent}
         onUpdateActionCost={handleUpdateActionCost}
+        onToggleAuto={handleToggleAuto}
         onBack={() => setScreen('main')}
       />
     );
@@ -292,6 +339,7 @@ export default function App() {
             onToggleGuard={handleToggleGuard}
             onNameChange={handleNameChange}
             onStanceChange={handleStanceChange}
+            onIncrementGuard={handleIncrementGuard}
           />
         ))}
       </main>

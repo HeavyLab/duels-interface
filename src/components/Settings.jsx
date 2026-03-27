@@ -8,8 +8,10 @@ export default function Settings({
   onUpdateMax,
   onUpdateSwapOpponent,
   onUpdateActionCost,
+  onToggleAuto,
   onBack,
 }) {
+  const autoOn = settings.automaticResolution !== false;
   return (
     <div className="screen settings-screen">
       <div className="screen-header">
@@ -18,6 +20,27 @@ export default function Settings({
       </div>
 
       <div className="settings-body">
+        {/* ── Section 0: Automatic Resolution ──────────── */}
+        <section className="settings-section">
+          <h2 className="section-heading">Resolution</h2>
+          <div className="settings-row" style={{ alignItems: 'center', gap: 16 }}>
+            <span className="settings-field-label" style={{ color: 'rgba(255,255,255,0.6)', fontSize: 14 }}>
+              Automatic attack resolution
+            </span>
+            <button
+              className={`toggle-btn${autoOn ? ' toggle-btn-on' : ' toggle-btn-off'}`}
+              onClick={onToggleAuto}
+            >
+              {autoOn ? 'ON' : 'OFF'}
+            </button>
+          </div>
+          {!autoOn && (
+            <p className="toggle-hint">
+              Auto-block and stance guard meter changes are disabled. Use the +1 guard buttons on each fighter panel to track manually.
+            </p>
+          )}
+        </section>
+
         {/* ── Section 1: Meter Maximums ─────────────────── */}
         <section className="settings-section">
           <h2 className="section-heading">Meter Maximums</h2>
