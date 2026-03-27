@@ -131,8 +131,28 @@ export function applyAction(fighters, fighterIndex, actionKey, settings) {
         momentum: clamp(opponent.momentum + responseCost.momentum, 0, settings.maxMomentum),
       };
 
+      // --- Stance guard meters: only on block, not on hit ---
+      const ADJACENT = { high: ['mid'], mid: ['high', 'low'], low: ['mid'] };
+      const maxGuard = settings.maxStanceGuard ?? 3;
+      let newStanceGuard = { ...(opponent.stanceGuard ?? { high: 0, mid: 0, low: 0 }) };
+      let newStartTurns = opponent.startTurnsToGuardReset ?? 0;
+
+      if (responseKey === 'directBlock' || responseKey === 'indirectBlock') {
+        for (const s of (ADJACENT[attackerStance] ?? [])) {
+          const cur = newStanceGuard[s] ?? 0;
+          if (cur < maxGuard) {
+            newStanceGuard[s] = cur + 1;
+            if (newStanceGuard[s] >= maxGuard) {
+              newStartTurns = 2; // broken: need 2 start-turns to reset
+            }
+          }
+        }
+      }
+
       newFighters = newFighters.map((f, i) =>
-        i === opponentIndex ? { ...f, ...afterOpp } : f
+        i === opponentIndex
+          ? { ...f, ...afterOpp, stanceGuard: newStanceGuard, startTurnsToGuardReset: newStartTurns }
+          : f
       );
 
       const responseLabel = {
@@ -149,6 +169,28 @@ export function applyAction(fighters, fighterIndex, actionKey, settings) {
         before: beforeOpp,
         after: afterOpp,
       });
+    }
+  }
+
+  // --- Start of turn: tick stance guard reset countdown ---
+  if (actionKey === 'startOfTurn') {
+    const f = newFighters[fighterIndex];
+    const turnsLeft = f.startTurnsToGuardReset ?? 0;
+    if (turnsLeft > 0) {
+      const newTurns = turnsLeft - 1;
+      const maxGuard = settings.maxStanceGuard ?? 3;
+      let newStanceGuard = { ...(f.stanceGuard ?? { high: 0, mid: 0, low: 0 }) };
+      if (newTurns === 0) {
+        // Reset every stance that was broken (at max)
+        Object.keys(newStanceGuard).forEach(s => {
+          if (newStanceGuard[s] >= maxGuard) newStanceGuard[s] = 0;
+        });
+      }
+      newFighters = newFighters.map((ff, i) =>
+        i === fighterIndex
+          ? { ...ff, stanceGuard: newStanceGuard, startTurnsToGuardReset: newTurns }
+          : ff
+      );
     }
   }
 

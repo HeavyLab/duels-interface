@@ -138,22 +138,41 @@ export default function FighterPanel({
         {STANCES.map(s => {
           const isActive = (fighter.stance ?? 'mid') === s;
           const disabled = staminaDepleted && !isActive;
+          const guardVal = fighter.stanceGuard?.[s] ?? 0;
+          const maxGuard = settings.maxStanceGuard ?? 3;
+          const isBroken = guardVal >= maxGuard;
           return (
             <button
               key={s}
               className={[
                 'stance-btn',
-                isActive   ? 'stance-btn-active'   : '',
-                disabled   ? 'stance-btn-disabled'  : '',
+                isActive  ? 'stance-btn-active'  : '',
+                isBroken  ? 'stance-btn-broken'  : '',
+                disabled  ? 'stance-btn-disabled' : '',
               ].filter(Boolean).join(' ')}
               onClick={() => !isActive && !disabled && onStanceChange(fighterIndex, s)}
               title={isActive ? `Current stance: ${s}` : staminaDepleted ? 'Cannot change stance — stamina depleted' : `Switch to ${s} stance (ST${settings.actionCosts.staminaAbove0.stance?.stamina ?? -2})`}
             >
-              {s.charAt(0).toUpperCase() + s.slice(1)}
+              <span className="stance-label">{s.charAt(0).toUpperCase() + s.slice(1)}</span>
+              <span className="stance-guard-pips">
+                {Array.from({ length: maxGuard }).map((_, i) => (
+                  <span
+                    key={i}
+                    className={`guard-pip${i < guardVal ? (isBroken ? ' guard-pip-broken' : ' guard-pip-filled') : ''}`}
+                  />
+                ))}
+              </span>
             </button>
           );
         })}
       </div>
+
+      {/* ── Guard reset countdown ──────────────────────── */}
+      {(fighter.startTurnsToGuardReset ?? 0) > 0 && (
+        <div className="guard-reset-notice">
+          🛡 Guard broken — resets in {fighter.startTurnsToGuardReset} start turn{fighter.startTurnsToGuardReset > 1 ? 's' : ''}
+        </div>
+      )}
 
       {/* ── Actions ───────────────────────────────────── */}
       <ActionButtons

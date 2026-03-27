@@ -9,7 +9,7 @@ import './App.css';
 
 // ─── State shape ─────────────────────────────────────────────────────────────
 // Bump this whenever the saved-state schema changes incompatibly.
-const STATE_VERSION = 2;
+const STATE_VERSION = 3;
 
 function buildInitialState() {
   try {
@@ -80,6 +80,20 @@ function reducer(state, action) {
     case 'UPDATE_MAX': {
       const { metric, value } = action;
       const newMax = Math.max(1, parseInt(value) || 1);
+
+      // stanceGuard max is an object field — clamp each stance, don't scale
+      if (metric === 'stanceGuard') {
+        const newSettings = { ...state.settings, maxStanceGuard: newMax };
+        const newFighters = state.fighters.map(f => ({
+          ...f,
+          stanceGuard: Object.fromEntries(
+            Object.entries(f.stanceGuard ?? { high: 0, mid: 0, low: 0 })
+              .map(([s, v]) => [s, clamp(v, 0, newMax)])
+          ),
+        }));
+        return { ...state, settings: newSettings, fighters: newFighters };
+      }
+
       const oldMax = state.settings[`max${capitalize(metric)}`];
       const newSettings = { ...state.settings, [`max${capitalize(metric)}`]: newMax };
       const newFighters = state.fighters.map(f => ({

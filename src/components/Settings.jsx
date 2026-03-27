@@ -23,9 +23,10 @@ export default function Settings({
           <h2 className="section-heading">Meter Maximums</h2>
           <div className="settings-row">
             {[
-              { key: 'health',   label: 'Health max',   color: '#e05555' },
-              { key: 'stamina',  label: 'Stamina max',  color: '#d4a017' },
-              { key: 'momentum', label: 'Momentum max', color: '#4a9ede' },
+              { key: 'health',      label: 'Health max',    color: '#e05555' },
+              { key: 'stamina',     label: 'Stamina max',   color: '#d4a017' },
+              { key: 'momentum',    label: 'Momentum max',  color: '#4a9ede' },
+              { key: 'stanceGuard', label: 'Guard max',     color: '#c080e0' },
             ].map(({ key, label, color }) => (
               <label key={key} className="settings-field">
                 <span className="settings-field-label" style={{ color }}>{label}</span>
@@ -34,7 +35,7 @@ export default function Settings({
                   type="number"
                   min="1"
                   max="99"
-                  value={settings[`max${key.charAt(0).toUpperCase() + key.slice(1)}`]}
+                  value={key === 'stanceGuard' ? settings.maxStanceGuard : settings[`max${key.charAt(0).toUpperCase() + key.slice(1)}`]}
                   onChange={e => onUpdateMax(key, e.target.value)}
                 />
               </label>

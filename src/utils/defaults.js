@@ -2,6 +2,7 @@ export const DEFAULT_SETTINGS = {
   maxHealth: 16,
   maxStamina: 24,
   maxMomentum: 10,
+  maxStanceGuard: 3,
   swapOpponentMomentum: -3,
   actionCosts: {
     staminaAbove0: {
@@ -87,6 +88,8 @@ export function createInitialFighters(settings) {
       stamina: settings.maxStamina,
       momentum: 0,
       stance: 'mid',
+      stanceGuard: { high: 0, mid: 0, low: 0 },
+      startTurnsToGuardReset: 0,
       guardBroken: false,
       powerTurnAvailable: false,
     },
@@ -97,6 +100,8 @@ export function createInitialFighters(settings) {
       stamina: settings.maxStamina,
       momentum: 0,
       stance: 'mid',
+      stanceGuard: { high: 0, mid: 0, low: 0 },
+      startTurnsToGuardReset: 0,
       guardBroken: false,
       powerTurnAvailable: false,
     },

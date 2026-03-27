@@ -313,9 +313,56 @@
   cursor: default;
 }
 
+.stance-btn-broken {
+  background: rgba(220,60,60,0.18) !important;
+  color: #ff8888 !important;
+  border: 1px solid rgba(220,60,60,0.45) !important;
+}
+
 .stance-btn-disabled {
   opacity: 0.3;
   cursor: not-allowed;
+}
+
+.stance-label {
+  display: block;
+}
+
+/* ── Stance guard pips ───────────────────────────── */
+.stance-guard-pips {
+  display: flex;
+  gap: 4px;
+  justify-content: center;
+  margin-top: 4px;
+}
+
+.guard-pip {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.12);
+  flex-shrink: 0;
+}
+
+.guard-pip-filled {
+  background: rgba(220,160,40,0.85);
+}
+
+.guard-pip-broken {
+  background: #ff4444;
+  box-shadow: 0 0 5px rgba(255,68,68,0.7);
+}
+
+/* ── Guard reset countdown ───────────────────────── */
+.guard-reset-notice {
+  background: rgba(220,60,60,0.12);
+  border: 1px solid rgba(220,60,60,0.35);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 11px;
+  color: #ff8888;
+  flex-shrink: 0;
+  text-align: center;
 }
 
 /* ══════════════════════════════════════════════════════
