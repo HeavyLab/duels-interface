@@ -170,7 +170,7 @@ export default function FighterPanel({
       {/* ── Guard reset countdown ──────────────────────── */}
       {(fighter.startTurnsToGuardReset ?? 0) > 0 && (
         <div className="guard-reset-notice">
-          🛡 Guard broken — resets in {fighter.startTurnsToGuardReset} start turn{fighter.startTurnsToGuardReset > 1 ? 's' : ''}
+          🛡 Guard broken — clears after <strong>{fighter.startTurnsToGuardReset}</strong> of your own Start Turn{fighter.startTurnsToGuardReset > 1 ? 's' : ''}
         </div>
       )}
 
