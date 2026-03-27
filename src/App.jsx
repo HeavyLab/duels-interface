@@ -8,14 +8,22 @@ import Rules from './components/Rules.jsx';
 import './App.css';
 
 // ─── State shape ─────────────────────────────────────────────────────────────
+// Bump this whenever the saved-state schema changes incompatibly.
+const STATE_VERSION = 2;
+
 function buildInitialState() {
   try {
     const saved = localStorage.getItem('duels-state');
-    if (saved) return JSON.parse(saved);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (parsed.version === STATE_VERSION) return parsed;
+      // Stale version — fall through to fresh state below
+    }
   } catch {/* ignore */}
 
   const settings = DEFAULT_SETTINGS;
   return {
+    version: STATE_VERSION,
     fighters: createInitialFighters(settings),
     settings,
     log: [],
@@ -162,7 +170,7 @@ export default function App() {
   // Persist to localStorage on every state change
   useEffect(() => {
     try {
-      localStorage.setItem('duels-state', JSON.stringify(state));
+      localStorage.setItem('duels-state', JSON.stringify({ ...state, version: STATE_VERSION }));
     } catch {/* ignore */}
   }, [state]);
 

@@ -94,9 +94,13 @@ export default function FighterPanel({
 
       {/* ── Power Turn Banner ──────────────────────────── */}
       {fighter.powerTurnAvailable && (
-        <div className="power-turn-banner">
-          ⚡ POWER TURN AVAILABLE
-        </div>
+        <button
+          className="power-turn-banner"
+          onClick={() => onAction(fighterIndex, 'spendMomentum')}
+          title="Tap to spend momentum (resets MO to 0)"
+        >
+          ⚡ POWER TURN — tap to spend
+        </button>
       )}
 
       {/* ── Stamina depleted warning ───────────────────── */}

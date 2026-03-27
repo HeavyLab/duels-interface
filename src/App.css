@@ -186,6 +186,12 @@
   letter-spacing: 0.08em;
   animation: power-turn-glow 1.2s ease-in-out infinite;
   flex-shrink: 0;
+  width: 100%;
+  cursor: pointer;
+  transition: background 120ms;
+}
+.power-turn-banner:active {
+  background: linear-gradient(90deg, rgba(255,200,0,0.35), rgba(255,220,60,0.5), rgba(255,200,0,0.35));
 }
 
 @keyframes power-turn-glow {
