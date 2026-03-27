@@ -101,6 +101,57 @@ export function applyAction(fighters, fighterIndex, actionKey, settings) {
     return f;
   });
 
+  // --- Attack: automatically apply opponent response based on stance gap ---
+  if (actionKey === 'attack') {
+    const STANCE_ORDER = ['high', 'mid', 'low'];
+    const opponentIndex = 1 - fighterIndex;
+    const opponent = newFighters[opponentIndex];
+
+    const attackerStance = fighter.stance ?? 'mid';
+    const opponentStance = opponent.stance ?? 'mid';
+    const distance = Math.abs(
+      STANCE_ORDER.indexOf(attackerStance) - STANCE_ORDER.indexOf(opponentStance)
+    );
+
+    // 0 apart → direct block, 1 apart → indirect block, 2 apart → getting hit
+    const responseKey = distance === 0 ? 'directBlock'
+      : distance === 1 ? 'indirectBlock'
+      : 'gettingHit';
+
+    const oppIsAt0 = opponent.stamina <= 0;
+    const responseCost = (oppIsAt0
+      ? settings.actionCosts.staminaAt0
+      : settings.actionCosts.staminaAbove0)[responseKey];
+
+    if (responseCost) {
+      const beforeOpp = { health: opponent.health, stamina: opponent.stamina, momentum: opponent.momentum };
+      const afterOpp = {
+        health:   clamp(opponent.health   + responseCost.health,   0, settings.maxHealth),
+        stamina:  clamp(opponent.stamina  + responseCost.stamina,  0, settings.maxStamina),
+        momentum: clamp(opponent.momentum + responseCost.momentum, 0, settings.maxMomentum),
+      };
+
+      newFighters = newFighters.map((f, i) =>
+        i === opponentIndex ? { ...f, ...afterOpp } : f
+      );
+
+      const responseLabel = {
+        directBlock:   'Direct Block (auto)',
+        indirectBlock: 'Indirect Block (auto)',
+        gettingHit:    'Getting Hit (auto)',
+      }[responseKey];
+
+      logEntries.push({
+        id: Date.now() + Math.random() + 0.5,
+        timestamp: logEntries[0].timestamp,
+        fighterName: opponent.name,
+        actionLabel: responseLabel,
+        before: beforeOpp,
+        after: afterOpp,
+      });
+    }
+  }
+
   // --- Swap position: also hit opponent momentum ---
   if (actionKey === 'swapPosition') {
     const opponentIndex = 1 - fighterIndex;
