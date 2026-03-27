@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import MeterBar from './MeterBar.jsx';
 import ActionButtons from './ActionButtons.jsx';
+import { STANCES } from '../utils/defaults.js';
 
 const METER_COLORS = {
   health:   '#e05555',
@@ -16,6 +17,7 @@ export default function FighterPanel({
   onAction,
   onToggleGuard,
   onNameChange,
+  onStanceChange,
 }) {
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState(fighter.name);
@@ -100,7 +102,7 @@ export default function FighterPanel({
       {/* ── Stamina depleted warning ───────────────────── */}
       {staminaDepleted && (
         <div className="stamina-warning">
-          ⚠ STAMINA DEPLETED — Move / Stance / Attack / Swap unavailable
+          ⚠ STAMINA DEPLETED — Move / Attack / Swap / Stance unavailable
         </div>
       )}
 
@@ -125,6 +127,28 @@ export default function FighterPanel({
           color={METER_COLORS.momentum}
           isPulsing={momentumFull}
         />
+      </div>
+
+      {/* ── Stance selector ───────────────────────────── */}
+      <div className="stance-row">
+        {STANCES.map(s => {
+          const isActive = (fighter.stance ?? 'mid') === s;
+          const disabled = staminaDepleted && !isActive;
+          return (
+            <button
+              key={s}
+              className={[
+                'stance-btn',
+                isActive   ? 'stance-btn-active'   : '',
+                disabled   ? 'stance-btn-disabled'  : '',
+              ].filter(Boolean).join(' ')}
+              onClick={() => !isActive && !disabled && onStanceChange(fighterIndex, s)}
+              title={isActive ? `Current stance: ${s}` : staminaDepleted ? 'Cannot change stance — stamina depleted' : `Switch to ${s} stance (ST${settings.actionCosts.staminaAbove0.stance?.stamina ?? -2})`}
+            >
+              {s.charAt(0).toUpperCase() + s.slice(1)}
+            </button>
+          );
+        })}
       </div>
 
       {/* ── Actions ───────────────────────────────────── */}

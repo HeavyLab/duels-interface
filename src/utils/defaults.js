@@ -58,7 +58,6 @@ export const POWER_TURN_CLEARING_ACTIONS = new Set(['attack']);
 export const ACTION_ORDER = [
   'startOfTurn',
   'move',
-  'stance',
   'attack',
   'directBlock',
   'indirectBlock',
@@ -69,6 +68,9 @@ export const ACTION_ORDER = [
   'gettingHit',
   'gettingHitIndirectBlock',
 ];
+
+// Stance options displayed as a selector row (not an action button)
+export const STANCES = ['high', 'mid', 'low'];
 
 // Human-readable labels for settings sections
 export const ACTION_SECTION_LABELS = {
@@ -84,6 +86,7 @@ export function createInitialFighters(settings) {
       health: settings.maxHealth,
       stamina: settings.maxStamina,
       momentum: 0,
+      stance: 'mid',
       guardBroken: false,
       powerTurnAvailable: false,
     },
@@ -93,6 +96,7 @@ export function createInitialFighters(settings) {
       health: settings.maxHealth,
       stamina: settings.maxStamina,
       momentum: 0,
+      stance: 'mid',
       guardBroken: false,
       powerTurnAvailable: false,
     },

@@ -109,6 +109,28 @@ function reducer(state, action) {
       return { ...state, settings: newSettings };
     }
 
+    case 'CHANGE_STANCE': {
+      const { fighterIndex, newStance } = action;
+      const fighter = state.fighters[fighterIndex];
+      if (fighter.stance === newStance) return state; // already in that stance
+      // Apply the stance action cost (will return null if stamina is 0)
+      const result = applyAction(state.fighters, fighterIndex, 'stance', state.settings);
+      if (!result) return state;
+      // Overwrite the fighter's stance and relabel the log entry
+      const newFighters = result.newFighters.map((f, i) =>
+        i === fighterIndex ? { ...f, stance: newStance } : f
+      );
+      const logEntries = result.logEntries.map(e => ({
+        ...e,
+        actionLabel: `Stance → ${capitalize(newStance)}`,
+      }));
+      return {
+        ...state,
+        fighters: newFighters,
+        log: [...logEntries, ...state.log],
+      };
+    }
+
     case 'RESET': {
       const { settings } = state;
       return {
@@ -171,6 +193,10 @@ export default function App() {
   const handleReset = () => {
     dispatch({ type: 'RESET' });
     setShowResetConfirm(false);
+  };
+
+  const handleStanceChange = (fighterIndex, newStance) => {
+    dispatch({ type: 'CHANGE_STANCE', fighterIndex, newStance });
   };
 
   const handleClearLog = () => {
@@ -243,6 +269,7 @@ export default function App() {
             onAction={handleAction}
             onToggleGuard={handleToggleGuard}
             onNameChange={handleNameChange}
+            onStanceChange={handleStanceChange}
           />
         ))}
       </main>
