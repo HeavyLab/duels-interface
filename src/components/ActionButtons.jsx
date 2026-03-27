@@ -26,12 +26,16 @@ export default function ActionButtons({ fighter, settings, onAction }) {
           ? (staminaAt0 ? settings.actionCosts.staminaAt0 : settings.actionCosts.staminaAbove0)[key]
           : null;
 
-        const parts = costs
+        // spendMomentum has a fixed label regardless of cost table zeros
+        const isSpendMomentum = key === 'spendMomentum';
+
+        const parts = isSpendMomentum
+          ? ['MO → 0']
+          : costs
           ? [
               costs.stamina  !== 0 ? `ST${costs.stamina  > 0 ? '+' : ''}${costs.stamina}`  : null,
               costs.momentum !== 0 ? `MO${costs.momentum > 0 ? '+' : ''}${costs.momentum}` : null,
               costs.health   !== 0 ? `HP${costs.health   > 0 ? '+' : ''}${costs.health}`   : null,
-              // Swap position also hits opponent momentum
               key === 'swapPosition' && settings.swapOpponentMomentum !== 0
                 ? `opp MO${settings.swapOpponentMomentum > 0 ? '+' : ''}${settings.swapOpponentMomentum}`
                 : null,
@@ -45,9 +49,10 @@ export default function ActionButtons({ fighter, settings, onAction }) {
             key={key}
             className={[
               'action-btn',
-              disabled           ? 'action-btn-disabled' : '',
-              key === 'attack'   ? 'action-btn-attack'   : '',
-              key === 'startOfTurn' ? 'action-btn-start' : '',
+              disabled                  ? 'action-btn-disabled'  : '',
+              key === 'attack'          ? 'action-btn-attack'    : '',
+              key === 'startOfTurn'     ? 'action-btn-start'     : '',
+              key === 'spendMomentum'   ? 'action-btn-momentum'  : '',
             ].filter(Boolean).join(' ')}
             onClick={() => !disabled && onAction(key)}
             disabled={disabled}

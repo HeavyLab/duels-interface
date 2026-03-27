@@ -27,6 +27,26 @@ export function isActionAvailable(actionKey, stamina, actionCosts) {
  */
 export function applyAction(fighters, fighterIndex, actionKey, settings) {
   const fighter = fighters[fighterIndex];
+
+  // --- Special: spend momentum resets to 0 absolutely ---
+  if (actionKey === 'spendMomentum') {
+    const before = { health: fighter.health, stamina: fighter.stamina, momentum: fighter.momentum };
+    const after  = { health: fighter.health, stamina: fighter.stamina, momentum: 0 };
+    return {
+      newFighters: fighters.map((f, i) =>
+        i === fighterIndex ? { ...f, momentum: 0, powerTurnAvailable: false } : f
+      ),
+      logEntries: [{
+        id: Date.now() + Math.random(),
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+        fighterName: fighter.name,
+        actionLabel: ACTION_LABELS.spendMomentum,
+        before,
+        after,
+      }],
+    };
+  }
+
   const isStaminaAt0 = fighter.stamina <= 0;
   const costTable = isStaminaAt0
     ? settings.actionCosts.staminaAt0

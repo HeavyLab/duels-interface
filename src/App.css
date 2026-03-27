@@ -323,6 +323,13 @@
 }
 .action-btn-attack:hover { background: rgba(224,85,85,0.25); }
 
+.action-btn-momentum {
+  background: rgba(74,158,222,0.15);
+  color: #8ac8f0;
+  border: 1px solid rgba(74,158,222,0.3);
+}
+.action-btn-momentum:hover { background: rgba(74,158,222,0.25); }
+
 .action-btn-disabled {
   opacity: 0.3;
   cursor: not-allowed;
