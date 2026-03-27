@@ -290,11 +290,11 @@
 
 .stance-btn {
   flex: 1;
-  min-height: 36px;
-  padding: 5px 4px;
+  min-height: 52px;
+  padding: 8px 4px;
   background: rgba(255,255,255,0.06);
   border-radius: 7px;
-  font-size: 12px;
+  font-size: 15px;
   font-weight: 700;
   color: #888aaa;
   letter-spacing: 0.03em;
