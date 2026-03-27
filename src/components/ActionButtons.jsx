@@ -17,27 +17,38 @@ export default function ActionButtons({ fighter, settings, onAction }) {
         const inTable = availableInTable.has(key);
         const staminaGated = STAMINA_GATED_ACTIONS.has(key) && staminaAt0;
         const disabled = staminaGated;
-        const hidden = !inTable && !staminaGated; // hide if not in either table at all
+        const hidden = !inTable && !staminaGated;
 
         if (hidden) return null;
 
-        // Cost hint for display
+        // Cost hint
         const costs = inTable
           ? (staminaAt0 ? settings.actionCosts.staminaAt0 : settings.actionCosts.staminaAbove0)[key]
           : null;
 
-        const costHint = costs
+        const parts = costs
           ? [
               costs.stamina  !== 0 ? `ST${costs.stamina  > 0 ? '+' : ''}${costs.stamina}`  : null,
               costs.momentum !== 0 ? `MO${costs.momentum > 0 ? '+' : ''}${costs.momentum}` : null,
               costs.health   !== 0 ? `HP${costs.health   > 0 ? '+' : ''}${costs.health}`   : null,
-            ].filter(Boolean).join(' ')
-          : '—';
+              // Swap position also hits opponent momentum
+              key === 'swapPosition' && settings.swapOpponentMomentum !== 0
+                ? `opp MO${settings.swapOpponentMomentum > 0 ? '+' : ''}${settings.swapOpponentMomentum}`
+                : null,
+            ].filter(Boolean)
+          : [];
+
+        const costHint = parts.length > 0 ? parts.join(' ') : 'no cost';
 
         return (
           <button
             key={key}
-            className={`action-btn${disabled ? ' action-btn-disabled' : ''}${key === 'attack' ? ' action-btn-attack' : ''}${key === 'startOfTurn' ? ' action-btn-start' : ''}`}
+            className={[
+              'action-btn',
+              disabled           ? 'action-btn-disabled' : '',
+              key === 'attack'   ? 'action-btn-attack'   : '',
+              key === 'startOfTurn' ? 'action-btn-start' : '',
+            ].filter(Boolean).join(' ')}
             onClick={() => !disabled && onAction(key)}
             disabled={disabled}
             title={disabled ? 'Unavailable — stamina depleted' : costHint}

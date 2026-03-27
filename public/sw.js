@@ -1,7 +1,7 @@
 const CACHE_NAME = 'duels-v1';
 
 // Files to precache on install
-const PRECACHE_URLS = ['/'];
+const PRECACHE_URLS = ['./'];
 
 self.addEventListener('install', event => {
   event.waitUntil(
