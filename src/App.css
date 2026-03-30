@@ -420,11 +420,11 @@
   align-items: center;
   justify-content: center;
   gap: 1px;
-  min-height: 44px;
-  padding: 4px 4px;
+  min-height: 32px;
+  padding: 3px 4px;
   background: rgba(255,255,255,0.06);
-  border-radius: 7px;
-  font-size: 11px;
+  border-radius: 5px;
+  font-size: 10px;
   font-weight: 600;
   color: #d0d0e8;
   transition: background 120ms, transform 80ms;
@@ -461,7 +461,7 @@
 }
 
 .action-label {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
   line-height: 1.2;
 }
@@ -1139,7 +1139,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 6px 12px;
+  padding: 10px 12px;
   background: #111125;
   border-bottom: 1px solid rgba(255,255,255,0.08);
   flex-shrink: 0;
@@ -1147,15 +1147,15 @@
 
 .duel-grid {
   display: flex;
-  gap: 3px;
+  gap: 4px;
   flex: 1;
 }
 
 .grid-tile {
   flex: 1;
-  height: 28px;
+  height: 52px;
   background: rgba(255,255,255,0.05);
-  border-radius: 4px;
+  border-radius: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1167,11 +1167,11 @@
 .grid-tile-f1 { background: rgba(224,85,85,0.2);  border: 1px solid rgba(224,85,85,0.5);  }
 
 .grid-fighter-dot {
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 800;
   border-radius: 50%;
-  width: 18px;
-  height: 18px;
+  width: 30px;
+  height: 30px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1180,12 +1180,12 @@
 .grid-fighter-dot-1 { background: #e05555; color: #fff; }
 
 .duel-grid-range {
-  font-size: 12px;
+  font-size: 13px;
   color: rgba(255,255,255,0.4);
   white-space: nowrap;
   flex-shrink: 0;
 }
-.duel-grid-range strong { color: #d8d8f0; }
+.duel-grid-range strong { color: #d8d8f0; font-size: 16px; }
 
 /* ══════════════════════════════════════════════════════
    FIGHTER CLASS BADGE & ACTION COUNTER
