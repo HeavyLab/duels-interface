@@ -197,7 +197,7 @@ export function applyAction(fighters, fighterIndex, actionKey, settings) {
         stamina:      clamp(f[fighterIndex].stamina  + cost,               0, maxStamina(f[fighterIndex])),
         momentum:     clamp(f[fighterIndex].momentum + ATTACK_MOMENTUM_GAIN, 0, MAX_MOMENTUM),
         actionsUsed:  f[fighterIndex].actionsUsed + 1,
-        powerTurnAvailable: false,
+        // powerTurnAvailable is NOT cleared here — it persists until spendPowerTurn or next startOfTurn
         powerGuardActive: false,
         flowBonusActive: false,
       };
