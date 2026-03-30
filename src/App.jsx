@@ -1,15 +1,15 @@
 import { useReducer, useEffect, useState } from 'react';
-import { DEFAULT_SETTINGS, createInitialFighters } from './utils/defaults.js';
-import { applyAction, scaleMeterValue, clamp } from './utils/gameLogic.js';
+import { DEFAULT_SETTINGS, createInitialFighter, REACHABLE_FROM, WEIGHT_CLASSES } from './utils/defaults.js';
+import { applyAction } from './utils/gameLogic.js';
+import SetupScreen from './components/SetupScreen.jsx';
 import FighterPanel from './components/FighterPanel.jsx';
+import DuelGrid from './components/DuelGrid.jsx';
 import TurnLog from './components/TurnLog.jsx';
 import Settings from './components/Settings.jsx';
 import Rules from './components/Rules.jsx';
 import './App.css';
 
-// ─── State shape ─────────────────────────────────────────────────────────────
-// Bump this whenever the saved-state schema changes incompatibly.
-const STATE_VERSION = 3;
+const STATE_VERSION = 4;
 
 function buildInitialState() {
   try {
@@ -17,31 +17,37 @@ function buildInitialState() {
     if (saved) {
       const parsed = JSON.parse(saved);
       if (parsed.version === STATE_VERSION) return parsed;
-      // Stale version — fall through to fresh state below
     }
-  } catch {/* ignore */}
+  } catch { /* ignore */ }
 
-  const settings = DEFAULT_SETTINGS;
   return {
     version: STATE_VERSION,
-    fighters: createInitialFighters(settings),
-    settings,
+    phase: 'setup',        // 'setup' | 'duel'
+    fighters: [],
+    settings: DEFAULT_SETTINGS,
     log: [],
   };
 }
 
-// ─── Reducer ─────────────────────────────────────────────────────────────────
+// ─── Reducer ──────────────────────────────────────────────────────────────────
 function reducer(state, action) {
   switch (action.type) {
 
+    case 'START_DUEL': {
+      const { configs } = action;
+      return {
+        ...state,
+        phase: 'duel',
+        fighters: configs.map((cfg, id) =>
+          createInitialFighter(id, cfg.weightClass, cfg.weapon, cfg.name.trim() || `Fighter ${id + 1}`)
+        ),
+        log: [],
+      };
+    }
+
     case 'APPLY_ACTION': {
       const { fighterIndex, actionKey } = action;
-      const result = applyAction(
-        state.fighters,
-        fighterIndex,
-        actionKey,
-        state.settings
-      );
+      const result = applyAction(state.fighters, fighterIndex, actionKey, state.settings);
       if (!result) return state;
       return {
         ...state,
@@ -50,95 +56,15 @@ function reducer(state, action) {
       };
     }
 
-    case 'TOGGLE_GUARD_BREAK': {
-      const { fighterIndex } = action;
-      return {
-        ...state,
-        fighters: state.fighters.map((f, i) =>
-          i === fighterIndex ? { ...f, guardBroken: !f.guardBroken } : f
-        ),
-      };
-    }
-
-    case 'SET_FIGHTER_NAME': {
-      const { fighterIndex, name } = action;
-      // Also update log entries that reference the old name
-      const oldName = state.fighters[fighterIndex].name;
-      return {
-        ...state,
-        fighters: state.fighters.map((f, i) =>
-          i === fighterIndex ? { ...f, name } : f
-        ),
-        log: state.log.map(entry =>
-          entry.fighterName === oldName
-            ? { ...entry, fighterName: name }
-            : entry
-        ),
-      };
-    }
-
-    case 'UPDATE_MAX': {
-      const { metric, value } = action;
-      const newMax = Math.max(1, parseInt(value) || 1);
-
-      // stanceGuard max is an object field — clamp each stance, don't scale
-      if (metric === 'stanceGuard') {
-        const newSettings = { ...state.settings, maxStanceGuard: newMax };
-        const newFighters = state.fighters.map(f => ({
-          ...f,
-          stanceGuard: Object.fromEntries(
-            Object.entries(f.stanceGuard ?? { high: 0, mid: 0, low: 0 })
-              .map(([s, v]) => [s, clamp(v, 0, newMax)])
-          ),
-        }));
-        return { ...state, settings: newSettings, fighters: newFighters };
-      }
-
-      const oldMax = state.settings[`max${capitalize(metric)}`];
-      const newSettings = { ...state.settings, [`max${capitalize(metric)}`]: newMax };
-      const newFighters = state.fighters.map(f => ({
-        ...f,
-        [metric]: scaleMeterValue(f[metric], oldMax, newMax),
-      }));
-      return { ...state, settings: newSettings, fighters: newFighters };
-    }
-
-    case 'UPDATE_SWAP_OPPONENT': {
-      const val = parseInt(action.value);
-      const newSettings = {
-        ...state.settings,
-        swapOpponentMomentum: isNaN(val) ? 0 : val,
-      };
-      return { ...state, settings: newSettings };
-    }
-
-    case 'UPDATE_ACTION_COST': {
-      const { table, actionKey, stat, value } = action;
-      const val = parseInt(value);
-      const newSettings = {
-        ...state.settings,
-        actionCosts: {
-          ...state.settings.actionCosts,
-          [table]: {
-            ...state.settings.actionCosts[table],
-            [actionKey]: {
-              ...state.settings.actionCosts[table][actionKey],
-              [stat]: isNaN(val) ? 0 : val,
-            },
-          },
-        },
-      };
-      return { ...state, settings: newSettings };
-    }
-
     case 'CHANGE_STANCE': {
       const { fighterIndex, newStance } = action;
       const fighter = state.fighters[fighterIndex];
-      if (fighter.stance === newStance) return state; // already in that stance
-      // Apply the stance action cost (will return null if stamina is 0)
+      if (fighter.stance === newStance) return state;
+      // Enforce adjacency constraint
+      if (!REACHABLE_FROM[fighter.stance]?.includes(newStance)) return state;
+      // Apply stamina cost
       const result = applyAction(state.fighters, fighterIndex, 'stance', state.settings);
       if (!result) return state;
-      // Overwrite the fighter's stance and relabel the log entry
       const newFighters = result.newFighters.map((f, i) =>
         i === fighterIndex ? { ...f, stance: newStance } : f
       );
@@ -153,38 +79,20 @@ function reducer(state, action) {
       };
     }
 
-    case 'RESET': {
-      const { settings } = state;
-      return {
-        ...state,
-        fighters: createInitialFighters(settings),
-      };
-    }
-
-    case 'TOGGLE_AUTO': {
-      return {
-        ...state,
-        settings: {
-          ...state.settings,
-          automaticResolution: !(state.settings.automaticResolution ?? true),
-        },
-      };
-    }
-
     case 'INCREMENT_GUARD': {
       const { fighterIndex, stance } = action;
       const fighter = state.fighters[fighterIndex];
-      const maxGuard = state.settings.maxStanceGuard ?? 3;
+      const maxG = WEIGHT_CLASSES[fighter.weightClass]?.maxGuard ?? 3;
       const curVal = fighter.stanceGuard?.[stance] ?? 0;
-      if (curVal >= maxGuard) return state;
+      if (curVal >= maxG) return state;
       const newVal = curVal + 1;
       const newGuard = { ...(fighter.stanceGuard ?? { high: 0, mid: 0, low: 0 }), [stance]: newVal };
-      const newStartTurns = newVal >= maxGuard ? 2 : (fighter.startTurnsToGuardReset ?? 0);
+      const newCountdown = newVal >= maxG ? 2 : (fighter.startTurnsToGuardReset ?? 0);
       const logEntry = {
         id: Date.now() + Math.random(),
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
         fighterName: fighter.name,
-        actionLabel: `Guard +1 ${stance.charAt(0).toUpperCase() + stance.slice(1)}`,
+        actionLabel: `Guard +1 ${capitalize(stance)}`,
         before: { health: fighter.health, stamina: fighter.stamina, momentum: fighter.momentum },
         after:  { health: fighter.health, stamina: fighter.stamina, momentum: fighter.momentum },
       };
@@ -192,10 +100,44 @@ function reducer(state, action) {
         ...state,
         fighters: state.fighters.map((f, i) =>
           i === fighterIndex
-            ? { ...f, stanceGuard: newGuard, startTurnsToGuardReset: newStartTurns }
+            ? { ...f, stanceGuard: newGuard, startTurnsToGuardReset: newCountdown }
             : f
         ),
         log: [logEntry, ...state.log],
+      };
+    }
+
+    case 'SET_FIGHTER_NAME': {
+      const { fighterIndex, name } = action;
+      const oldName = state.fighters[fighterIndex].name;
+      return {
+        ...state,
+        fighters: state.fighters.map((f, i) => i === fighterIndex ? { ...f, name } : f),
+        log: state.log.map(e => e.fighterName === oldName ? { ...e, fighterName: name } : e),
+      };
+    }
+
+    case 'TOGGLE_AUTO': {
+      return {
+        ...state,
+        settings: { ...state.settings, automaticResolution: !(state.settings.automaticResolution ?? true) },
+      };
+    }
+
+    case 'RESET': {
+      // Reset fighters to full health/stamina but keep class/weapon
+      return {
+        ...state,
+        fighters: state.fighters.map(f => createInitialFighter(f.id, f.weightClass, f.weapon, f.name)),
+      };
+    }
+
+    case 'NEW_DUEL': {
+      return {
+        ...state,
+        phase: 'setup',
+        fighters: [],
+        log: [],
       };
     }
 
@@ -219,67 +161,44 @@ export default function App() {
   const [showLog, setShowLog] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
 
-  // Persist to localStorage on every state change
   useEffect(() => {
     try {
       localStorage.setItem('duels-state', JSON.stringify({ ...state, version: STATE_VERSION }));
-    } catch {/* ignore */}
+    } catch { /* ignore */ }
   }, [state]);
 
-  const handleAction = (fighterIndex, actionKey) => {
+  const handleAction = (fighterIndex, actionKey) =>
     dispatch({ type: 'APPLY_ACTION', fighterIndex, actionKey });
-  };
 
-  const handleToggleGuard = (fighterIndex) => {
-    dispatch({ type: 'TOGGLE_GUARD_BREAK', fighterIndex });
-  };
-
-  const handleNameChange = (fighterIndex, name) => {
+  const handleNameChange = (fighterIndex, name) =>
     dispatch({ type: 'SET_FIGHTER_NAME', fighterIndex, name });
-  };
 
-  const handleUpdateMax = (metric, value) => {
-    dispatch({ type: 'UPDATE_MAX', metric, value });
-  };
+  const handleStanceChange = (fighterIndex, newStance) =>
+    dispatch({ type: 'CHANGE_STANCE', fighterIndex, newStance });
 
-  const handleUpdateSwapOpponent = (value) => {
-    dispatch({ type: 'UPDATE_SWAP_OPPONENT', value });
-  };
-
-  const handleUpdateActionCost = (table, actionKey, stat, value) => {
-    dispatch({ type: 'UPDATE_ACTION_COST', table, actionKey, stat, value });
-  };
+  const handleIncrementGuard = (fighterIndex, stance) =>
+    dispatch({ type: 'INCREMENT_GUARD', fighterIndex, stance });
 
   const handleReset = () => {
     dispatch({ type: 'RESET' });
     setShowResetConfirm(false);
   };
 
-  const handleStanceChange = (fighterIndex, newStance) => {
-    dispatch({ type: 'CHANGE_STANCE', fighterIndex, newStance });
+  const handleStartDuel = (configs) => {
+    dispatch({ type: 'START_DUEL', configs });
   };
 
-  const handleClearLog = () => {
-    dispatch({ type: 'CLEAR_LOG' });
-  };
+  // ── Setup phase ─────────────────────────────────────────────────────────────
+  if (state.phase === 'setup') {
+    return <SetupScreen onStart={handleStartDuel} />;
+  }
 
-  const handleToggleAuto = () => {
-    dispatch({ type: 'TOGGLE_AUTO' });
-  };
-
-  const handleIncrementGuard = (fighterIndex, stance) => {
-    dispatch({ type: 'INCREMENT_GUARD', fighterIndex, stance });
-  };
-
-  // ─── Render ────────────────────────────────────────────────────────────────
+  // ── Settings / Rules screens ─────────────────────────────────────────────────
   if (screen === 'settings') {
     return (
       <Settings
         settings={state.settings}
-        onUpdateMax={handleUpdateMax}
-        onUpdateSwapOpponent={handleUpdateSwapOpponent}
-        onUpdateActionCost={handleUpdateActionCost}
-        onToggleAuto={handleToggleAuto}
+        onToggleAuto={() => dispatch({ type: 'TOGGLE_AUTO' })}
         onBack={() => setScreen('main')}
       />
     );
@@ -289,54 +208,31 @@ export default function App() {
     return <Rules onBack={() => setScreen('main')} />;
   }
 
+  // ── Main game ────────────────────────────────────────────────────────────────
   return (
     <div className="app">
-      {/* Header */}
       <header className="header">
         <span className="header-title">⚔ Duels</span>
         <div className="header-actions">
-          <button
-            className="header-btn"
-            onClick={() => setShowLog(true)}
-            title="Turn log"
-          >
-            📋
-          </button>
-          <button
-            className="header-btn"
-            onClick={() => setScreen('rules')}
-            title="Rules reference"
-          >
-            📖
-          </button>
-          <button
-            className="header-btn"
-            onClick={() => setScreen('settings')}
-            title="Settings"
-          >
-            ⚙
-          </button>
-          <button
-            className="header-btn reset-btn"
-            onClick={() => setShowResetConfirm(true)}
-            title="Reset fighters"
-          >
-            ↺
-          </button>
+          <button className="header-btn" onClick={() => setShowLog(true)} title="Turn log">📋</button>
+          <button className="header-btn" onClick={() => setScreen('rules')} title="Rules">📖</button>
+          <button className="header-btn" onClick={() => setScreen('settings')} title="Settings">⚙</button>
+          <button className="header-btn" onClick={() => setShowResetConfirm(true)} title="Reset fighters">↺</button>
+          <button className="header-btn" onClick={() => dispatch({ type: 'NEW_DUEL' })} title="New duel (back to setup)">🆕</button>
         </div>
       </header>
 
-      {/* Fighter panels */}
+      <DuelGrid fighters={state.fighters} />
+
       <main className="main-area">
         {state.fighters.map((fighter, index) => (
           <FighterPanel
             key={fighter.id}
             fighter={fighter}
             fighterIndex={index}
+            opponent={state.fighters[1 - index]}
             settings={state.settings}
-            opponentName={state.fighters[1 - index].name}
             onAction={handleAction}
-            onToggleGuard={handleToggleGuard}
             onNameChange={handleNameChange}
             onStanceChange={handleStanceChange}
             onIncrementGuard={handleIncrementGuard}
@@ -344,28 +240,22 @@ export default function App() {
         ))}
       </main>
 
-      {/* Turn log modal */}
       {showLog && (
         <TurnLog
           log={state.log}
           onClose={() => setShowLog(false)}
-          onClear={handleClearLog}
+          onClear={() => dispatch({ type: 'CLEAR_LOG' })}
         />
       )}
 
-      {/* Reset confirmation */}
       {showResetConfirm && (
         <div className="modal-overlay" onClick={() => setShowResetConfirm(false)}>
           <div className="modal-dialog" onClick={e => e.stopPropagation()}>
             <h3>Reset Fighters?</h3>
-            <p>Both fighters will be restored to full meters. Guard breaks will be cleared. The turn log and settings are not affected.</p>
+            <p>Both fighters restored to full stats. Positions and guard reset. Log and settings unchanged.</p>
             <div className="modal-actions">
-              <button className="btn-cancel" onClick={() => setShowResetConfirm(false)}>
-                Cancel
-              </button>
-              <button className="btn-confirm-danger" onClick={handleReset}>
-                Reset
-              </button>
+              <button className="btn-cancel" onClick={() => setShowResetConfirm(false)}>Cancel</button>
+              <button className="btn-confirm-danger" onClick={handleReset}>Reset</button>
             </div>
           </div>
         </div>

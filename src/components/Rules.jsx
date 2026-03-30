@@ -11,55 +11,83 @@ export default function Rules({ onBack }) {
         <section className="rules-section">
           <h2>Turn Structure</h2>
           <ul>
-            <li>Each turn has <strong>2 actions</strong>.</li>
-            <li>Action 1: nothing / rest / move / stance <em>(attack allowed from v2)</em></li>
-            <li>Action 2: nothing / move / stance / attack
-              <ul>
-                <li>No second move if you moved in action 1</li>
-                <li>No second attack</li>
-              </ul>
-            </li>
-            <li>Resting in action 1 ends the turn — only <em>nothing</em> is available as action 2.</li>
-            <li>Doing nothing in action 1 does <strong>not</strong> end the turn.</li>
+            <li>Press <strong>Start Turn</strong>: gain +4 ST</li>
+            <li>Each turn: perform <strong>2 actions</strong></li>
+            <li>If momentum is full (10) at Start Turn: after both actions you may press <strong>Power Turn</strong> (MO→0) to play an extra turn immediately</li>
+            <li>If Power Turn goes unused, momentum decays to 6 on the next Start Turn</li>
           </ul>
         </section>
 
         <section className="rules-section">
-          <h2>Momentum</h2>
+          <h2>Grid &amp; Range</h2>
           <ul>
-            <li>A <strong>Momentum Power Turn</strong> triggers at the <em>start</em> of a turn if the meter is full.</li>
-            <li>Getting hit before your turn starts can prevent the power turn from triggering.</li>
-            <li>During a power turn the fighter takes <strong>2 actions</strong> before the opponent acts.</li>
-            <li>Swap Position resets own momentum entirely and reduces opponent momentum by 3.</li>
+            <li>7-tile linear grid — move forward (toward opponent) or backward (−1 ST each)</li>
+            <li>Range = distance between fighters</li>
+            <li><strong>Swap Position</strong>: range must be 1; costs 6 ST; resets your MO to 0; you and opponent exchange tiles</li>
           </ul>
         </section>
 
         <section className="rules-section">
-          <h2>Guard Break</h2>
+          <h2>Stances</h2>
           <ul>
-            <li>A guard break persists until the fighter with the broken guard takes their next action.</li>
-            <li>During a momentum power turn, both actions can be taken against a broken guard before it resets.</li>
+            <li>3 stances: <strong>High ↔ Mid ↔ Low</strong> — can only move to adjacent stances (costs 1 ST)</li>
+            <li>Same stance = <strong>Direct Block</strong> (+2 MO to defender)</li>
+            <li>1 apart = <strong>Indirect Block</strong> (+1 MO, −1 ST to defender)</li>
+            <li>2 apart = <strong>Clean Hit</strong> (−2 MO + weapon damage to defender)</li>
           </ul>
         </section>
 
         <section className="rules-section">
-          <h2>Stamina Depletion (Stamina = 0)</h2>
+          <h2>Guard Meters</h2>
           <ul>
-            <li>Cannot Move, change Stance, Swap Position, or Attack.</li>
-            <li>Direct Block gives <strong>+1 momentum</strong> instead of +2.</li>
-            <li>Indirect Block gives <strong>no momentum</strong>.</li>
-            <li>Getting Hit deals <strong>−3 momentum and −3 health</strong> instead of −1 and −3.</li>
+            <li>Each stance has its own guard meter (Light 3, Medium 4, Heavy 5)</li>
+            <li>Attacking from <strong>High</strong> pressures defender's Mid guard</li>
+            <li>Attacking from <strong>Mid</strong> pressures defender's High &amp; Low guards</li>
+            <li>Attacking from <strong>Low</strong> pressures defender's Mid guard</li>
+            <li>When a guard fills → broken for 2 of the defender's Start Turns</li>
+            <li>While broken: attacker in that stance → guaranteed clean hit + 1 bonus damage</li>
           </ul>
+        </section>
+
+        <section className="rules-section">
+          <h2>Weapons (damage: direct / indirect / clean hit)</h2>
+          <ul>
+            <li><strong>Sword</strong>: 0 / 1 / 3 — effective at 1 tile, less eff. at 2, no attack &gt;2</li>
+            <li><strong>Spear</strong>: 0 / 0 / 2 + 1 MO to attacker — effective at 2 tiles, less eff. at 1, no attack &gt;2</li>
+            <li><strong>Hammer</strong>: 0 / 1 / 4 — effective at 1 tile, less eff. at 2, no attack &gt;2</li>
+            <li>Less effective: −2 extra ST cost and −1 damage</li>
+          </ul>
+        </section>
+
+        <section className="rules-section">
+          <h2>Weight Classes</h2>
+          <ul>
+            <li><strong>Light</strong> HP 12 ST 24 Guard 3 — spend 3 ST + 1 MO: gain a free extra movement action</li>
+            <li><strong>Medium</strong> HP 18 ST 18 Guard 4 — 1st action each turn costs 1 less ST</li>
+            <li><strong>Heavy</strong> HP 24 ST 12 Guard 5 — spend 3 ST + 2 MO: next attack applies double guard pressure</li>
+          </ul>
+        </section>
+
+        <section className="rules-section">
+          <h2>Flow Attacks</h2>
+          <ul>
+            <li>Available when MO ≥ 6</li>
+            <li>Acts as a stance-change (−1 ST) and costs −3 MO</li>
+            <li>Grants a flow bonus: next attack costs 3 less ST</li>
+          </ul>
+        </section>
+
+        <section className="rules-section">
+          <h2>Stamina at 0</h2>
+          <p>Move, Stance, Attack, and Swap Position unavailable. Rest and manual blocks still work.</p>
         </section>
 
         <section className="rules-section">
           <h2>App Notes</h2>
           <ul>
-            <li>The app <strong>does not enforce</strong> turn order — any action can be pressed at any time.</li>
-            <li>Press <em>Start Turn</em> to apply stamina recovery (+4 ST by default).</li>
-            <li>POWER TURN AVAILABLE is a reminder only — it shows when momentum was full at Start Turn and clears when Attack is used.</li>
-            <li>Guard Break toggle is manual — players track this themselves.</li>
-            <li>Settings are saved automatically. Use the Reset button to restore both fighters to full meters.</li>
+            <li>Turn order is not enforced — both panels are always interactive.</li>
+            <li>The action counter (two pips) tracks actions used this turn and resets on Start Turn.</li>
+            <li>Settings → turn off automatic resolution to apply blocks/hits manually.</li>
           </ul>
         </section>
 
