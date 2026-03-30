@@ -1,4 +1,4 @@
-Interface to test and validate and iterate over the duel system of the game I'm developing in Godot
+Interface to test, validate and iterate over the duel system of the game I'm developing in Godot
 
 Prone to big changes from one version to another
 Might not entirely reflect the mechanics that will be available for the complete game
