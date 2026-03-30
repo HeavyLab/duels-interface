@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import MeterBar from './MeterBar.jsx';
 import ActionButtons from './ActionButtons.jsx';
-import { STANCES } from '../utils/defaults.js';
+import { STANCES, REACHABLE_FROM, WEIGHT_CLASSES, WEAPONS, MAX_MOMENTUM } from '../utils/defaults.js';
 
 const METER_COLORS = {
   health:   '#e05555',
@@ -12,10 +12,9 @@ const METER_COLORS = {
 export default function FighterPanel({
   fighter,
   fighterIndex,
+  opponent,
   settings,
-  opponentName,
   onAction,
-  onToggleGuard,
   onNameChange,
   onStanceChange,
   onIncrementGuard,
@@ -24,7 +23,6 @@ export default function FighterPanel({
   const [nameInput, setNameInput] = useState(fighter.name);
   const nameInputRef = useRef(null);
 
-  // Sync local input if fighter name changed externally
   useEffect(() => {
     if (!editingName) setNameInput(fighter.name);
   }, [fighter.name, editingName]);
@@ -42,18 +40,26 @@ export default function FighterPanel({
     setEditingName(false);
   };
 
-  const momentumFull = fighter.momentum >= settings.maxMomentum;
+  const wc  = WEIGHT_CLASSES[fighter.weightClass];
+  const wpn = WEAPONS[fighter.weapon];
+  const momentumFull   = fighter.momentum >= MAX_MOMENTUM;
   const staminaDepleted = fighter.stamina <= 0;
+  const turnDone = (fighter.actionsUsed ?? 0) >= 2;
+  const maxG = wc?.maxGuard ?? 3;
 
   const panelClass = [
     'fighter-panel',
     `fighter-panel-${fighterIndex}`,
     staminaDepleted ? 'fighter-panel-stamina0' : '',
+    turnDone ? 'fighter-panel-turn-done' : '',
   ].filter(Boolean).join(' ');
+
+  const currentStance = fighter.stance ?? 'mid';
 
   return (
     <div className={panelClass}>
-      {/* ── Name & Guard Break ─────────────────────────── */}
+
+      {/* ── Name ─────────────────────────────────────── */}
       <div className="panel-header">
         <div className="name-area">
           {editingName ? (
@@ -65,102 +71,86 @@ export default function FighterPanel({
               onBlur={commitName}
               onKeyDown={e => {
                 if (e.key === 'Enter') commitName();
-                if (e.key === 'Escape') {
-                  setNameInput(fighter.name);
-                  setEditingName(false);
-                }
+                if (e.key === 'Escape') { setNameInput(fighter.name); setEditingName(false); }
               }}
               maxLength={24}
             />
           ) : (
-            <button
-              className="name-btn"
-              onClick={() => setEditingName(true)}
-              title="Tap to rename"
-            >
+            <button className="name-btn" onClick={() => setEditingName(true)} title="Tap to rename">
               {fighter.name}
               <span className="name-edit-icon">✎</span>
             </button>
           )}
         </div>
-
-        <button
-          className={`guard-btn${fighter.guardBroken ? ' guard-broken' : ''}`}
-          onClick={() => onToggleGuard(fighterIndex)}
-          title="Toggle guard break"
-        >
-          {fighter.guardBroken ? '🛡 GUARD BROKEN' : '🛡 Guard OK'}
-        </button>
+        <div className="fighter-class-badge">
+          <span className="badge-wc">{wc?.label}</span>
+          <span className="badge-wpn">{wpn?.label}</span>
+        </div>
       </div>
 
-      {/* ── Power Turn Banner ──────────────────────────── */}
-      {fighter.powerTurnAvailable && (
-        <button
-          className="power-turn-banner"
-          onClick={() => onAction(fighterIndex, 'spendMomentum')}
-          title="Tap to spend momentum (resets MO to 0)"
-        >
-          ⚡ POWER TURN — tap to spend
-        </button>
-      )}
+      {/* ── Actions used counter ─────────────────────── */}
+      <div className="action-counter">
+        <span className="action-counter-label">Actions</span>
+        <div className="action-pips">
+          {[0, 1].map(i => (
+            <span key={i} className={`action-pip${(fighter.actionsUsed ?? 0) > i ? ' action-pip-used' : ''}`} />
+          ))}
+        </div>
+        {turnDone && !fighter.powerTurnAvailable && (
+          <span className="action-counter-done">Turn done</span>
+        )}
+        {fighter.powerTurnAvailable && (fighter.actionsUsed ?? 0) < 2 && (
+          <span className="action-counter-pt">⚡ Power Turn ready</span>
+        )}
+      </div>
 
-      {/* ── Stamina depleted warning ───────────────────── */}
+      {/* ── Stamina depleted warning ─────────────────── */}
       {staminaDepleted && (
         <div className="stamina-warning">
-          ⚠ STAMINA DEPLETED — Move / Attack / Swap / Stance unavailable
+          ST 0 — Move / Attack / Swap / Stance unavailable
         </div>
       )}
 
-      {/* ── Meters ────────────────────────────────────── */}
+      {/* ── Meters ───────────────────────────────────── */}
       <div className="meters">
-        <MeterBar
-          label="HP"
-          current={fighter.health}
-          max={settings.maxHealth}
-          color={METER_COLORS.health}
-        />
-        <MeterBar
-          label="ST"
-          current={fighter.stamina}
-          max={settings.maxStamina}
-          color={METER_COLORS.stamina}
-        />
-        <MeterBar
-          label="MO"
-          current={fighter.momentum}
-          max={settings.maxMomentum}
-          color={METER_COLORS.momentum}
-          isPulsing={momentumFull}
-        />
+        <MeterBar label="HP" current={fighter.health}   max={wc?.maxHealth  ?? 18} color={METER_COLORS.health} />
+        <MeterBar label="ST" current={fighter.stamina}  max={wc?.maxStamina ?? 18} color={METER_COLORS.stamina} />
+        <MeterBar label="MO" current={fighter.momentum} max={MAX_MOMENTUM}          color={METER_COLORS.momentum} isPulsing={momentumFull} />
       </div>
 
-      {/* ── Stance selector ───────────────────────────── */}
+      {/* ── Stance selector ──────────────────────────── */}
       <div className="stance-row">
         {STANCES.map(s => {
-          const isActive = (fighter.stance ?? 'mid') === s;
-          const disabled = staminaDepleted && !isActive;
-          const guardVal = fighter.stanceGuard?.[s] ?? 0;
-          const maxGuard = settings.maxStanceGuard ?? 3;
-          const isBroken = guardVal >= maxGuard;
+          const isActive   = currentStance === s;
+          const reachable  = REACHABLE_FROM[currentStance]?.includes(s);
+          const guardVal   = fighter.stanceGuard?.[s] ?? 0;
+          const isBroken   = guardVal >= maxG;
+          const canChange  = !isActive && reachable && !staminaDepleted && !turnDone;
+          const notReachable = !isActive && !reachable;
+
           return (
             <button
               key={s}
               className={[
                 'stance-btn',
-                isActive  ? 'stance-btn-active'  : '',
-                isBroken  ? 'stance-btn-broken'  : '',
-                disabled  ? 'stance-btn-disabled' : '',
+                isActive      ? 'stance-btn-active'      : '',
+                isBroken      ? 'stance-btn-broken'      : '',
+                notReachable  ? 'stance-btn-unreachable' : '',
+                !canChange && !isActive ? 'stance-btn-disabled' : '',
               ].filter(Boolean).join(' ')}
-              onClick={() => !isActive && !disabled && onStanceChange(fighterIndex, s)}
-              title={isActive ? `Current stance: ${s}` : staminaDepleted ? 'Cannot change stance — stamina depleted' : `Switch to ${s} stance (ST${settings.actionCosts.staminaAbove0.stance?.stamina ?? -2})`}
+              onClick={() => canChange && onStanceChange(fighterIndex, s)}
+              title={
+                isActive      ? `Current stance: ${s}` :
+                notReachable  ? `Cannot reach ${s} from ${currentStance}` :
+                staminaDepleted ? 'ST 0 — cannot change stance' :
+                turnDone      ? 'No actions left' :
+                `Switch to ${s} (ST−1)`
+              }
             >
               <span className="stance-label">{s.charAt(0).toUpperCase() + s.slice(1)}</span>
               <span className="stance-guard-pips">
-                {Array.from({ length: maxGuard }).map((_, i) => (
-                  <span
-                    key={i}
-                    className={`guard-pip${i < guardVal ? (isBroken ? ' guard-pip-broken' : ' guard-pip-filled') : ''}`}
-                  />
+                {Array.from({ length: maxG }).map((_, i) => (
+                  <span key={i} className={`guard-pip${i < guardVal ? (isBroken ? ' guard-pip-broken' : ' guard-pip-filled') : ''}`} />
                 ))}
               </span>
             </button>
@@ -168,20 +158,19 @@ export default function FighterPanel({
         })}
       </div>
 
-      {/* ── Guard reset countdown ──────────────────────── */}
+      {/* ── Guard reset countdown ─────────────────────── */}
       {(fighter.startTurnsToGuardReset ?? 0) > 0 && (
         <div className="guard-reset-notice">
-          🛡 Guard broken — clears after <strong>{fighter.startTurnsToGuardReset}</strong> of your own Start Turn{fighter.startTurnsToGuardReset > 1 ? 's' : ''}
+          Guard broken — resets in <strong>{fighter.startTurnsToGuardReset}</strong> of your Start Turn{fighter.startTurnsToGuardReset > 1 ? 's' : ''}
         </div>
       )}
 
-      {/* ── Manual guard increment (when auto is off) ── */}
+      {/* ── Manual guard increment (auto OFF) ────────── */}
       {settings.automaticResolution === false && (
         <div className="guard-manual-row">
           {STANCES.map(s => {
             const guardVal = fighter.stanceGuard?.[s] ?? 0;
-            const maxGuard = settings.maxStanceGuard ?? 3;
-            const isFull = guardVal >= maxGuard;
+            const isFull = guardVal >= maxG;
             return (
               <button
                 key={s}
@@ -197,9 +186,10 @@ export default function FighterPanel({
         </div>
       )}
 
-      {/* ── Actions ───────────────────────────────────── */}
+      {/* ── Actions ──────────────────────────────────── */}
       <ActionButtons
         fighter={fighter}
+        opponent={opponent}
         settings={settings}
         onAction={(key) => onAction(fighterIndex, key)}
       />

@@ -1,233 +1,426 @@
 import {
-  STAMINA_GATED_ACTIONS,
-  POWER_TURN_CLEARING_ACTIONS,
-  ACTION_LABELS,
+  WEIGHT_CLASSES, WEAPONS, GRID_SIZE, STANCES,
+  MAX_MOMENTUM, MOMENTUM_DECAY_VALUE,
+  HIT_EFFECTS, GUARD_PRESSURE_ON,
+  ATTACK_STAMINA_BASE, ATTACK_STAMINA_LESS_EFFECTIVE, ATTACK_MOMENTUM_GAIN,
+  GUARD_BREAK_BONUS_DAMAGE, FLOW_ATTACK_THRESHOLD,
 } from './defaults.js';
+
+// ── Helpers ────────────────────────────────────────────────────────────────────
 
 export function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
-/**
- * Returns whether an action key is available given the current fighter stamina.
- */
-export function isActionAvailable(actionKey, stamina, actionCosts) {
-  // Stamina-gated actions require stamina > 0
-  if (STAMINA_GATED_ACTIONS.has(actionKey) && stamina <= 0) return false;
-  // Action must exist in the applicable cost table
-  const table = stamina <= 0 ? actionCosts.staminaAt0 : actionCosts.staminaAbove0;
-  return actionKey in table;
+function maxHealth(f)  { return WEIGHT_CLASSES[f.weightClass]?.maxHealth  ?? 18; }
+function maxStamina(f) { return WEIGHT_CLASSES[f.weightClass]?.maxStamina ?? 18; }
+function maxGuard(f)   { return WEIGHT_CLASSES[f.weightClass]?.maxGuard   ?? 4;  }
+
+export function getRange(f0, f1) {
+  return Math.abs(f0.position - f1.position);
 }
 
-/**
- * Applies a game action to the fighters array.
- * Returns { newFighters, logEntries } or null if the action isn't available.
- *
- * logEntries is an array because swap position creates two entries.
- */
+export function getEffectiveness(weapon, range) {
+  const w = WEAPONS[weapon];
+  if (!w) return 'ineffective';
+  if (w.effectiveAt.includes(range)) return 'effective';
+  if ((w.lessEffectiveAt ?? []).includes(range)) return 'lessEffective';
+  return 'ineffective';
+}
+
+function stanceGap(a, b) {
+  const ORDER = { high: 0, mid: 1, low: 2 };
+  return Math.abs((ORDER[a] ?? 1) - (ORDER[b] ?? 1));
+}
+
+function getHitType(attackerStance, defenderStance) {
+  const gap = stanceGap(attackerStance, defenderStance);
+  if (gap === 0) return 'directBlock';
+  if (gap === 1) return 'indirectBlock';
+  return 'cleanHit';
+}
+
+function ts() {
+  return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+function snap(f) {
+  return { health: f.health, stamina: f.stamina, momentum: f.momentum };
+}
+
+// Medium class: 1st action costs 1 less stamina (only reduces cost, doesn't add stamina)
+function withClassBonus(fighter, staminaCost) {
+  if (fighter.weightClass === 'medium' && fighter.actionsUsed === 0 && staminaCost < 0) {
+    return staminaCost + 1;
+  }
+  return staminaCost;
+}
+
+// ── Main action dispatcher ─────────────────────────────────────────────────────
+
 export function applyAction(fighters, fighterIndex, actionKey, settings) {
   const fighter = fighters[fighterIndex];
-
-  // --- Special: spend momentum resets to 0 absolutely ---
-  if (actionKey === 'spendMomentum') {
-    const before = { health: fighter.health, stamina: fighter.stamina, momentum: fighter.momentum };
-    const after  = { health: fighter.health, stamina: fighter.stamina, momentum: 0 };
-    return {
-      newFighters: fighters.map((f, i) =>
-        i === fighterIndex ? { ...f, momentum: 0, powerTurnAvailable: false } : f
-      ),
-      logEntries: [{
-        id: Date.now() + Math.random(),
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-        fighterName: fighter.name,
-        actionLabel: ACTION_LABELS.spendMomentum,
-        before,
-        after,
-      }],
-    };
-  }
-
-  const isStaminaAt0 = fighter.stamina <= 0;
-  const costTable = isStaminaAt0
-    ? settings.actionCosts.staminaAt0
-    : settings.actionCosts.staminaAbove0;
-
-  const cost = costTable[actionKey];
-  if (!cost) return null;
-
-  // --- Determine power turn flag ---
-  let powerTurnAvailable = fighter.powerTurnAvailable;
-  if (actionKey === 'startOfTurn') {
-    // Check BEFORE applying costs
-    powerTurnAvailable = fighter.momentum >= settings.maxMomentum;
-  }
-  if (POWER_TURN_CLEARING_ACTIONS.has(actionKey)) {
-    powerTurnAvailable = false;
-  }
-
-  // --- Apply costs to the acting fighter ---
-  const beforeSelf = {
-    health: fighter.health,
-    stamina: fighter.stamina,
-    momentum: fighter.momentum,
-  };
-
-  const afterSelf = {
-    health:   clamp(fighter.health   + cost.health,   0, settings.maxHealth),
-    stamina:  clamp(fighter.stamina  + cost.stamina,  0, settings.maxStamina),
-    momentum: clamp(fighter.momentum + cost.momentum, 0, settings.maxMomentum),
-  };
-
+  const opponent = fighters[1 - fighterIndex];
+  const timestamp = ts();
   const logEntries = [];
 
-  logEntries.push({
-    id: Date.now() + Math.random(),
-    timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-    fighterName: fighter.name,
-    actionLabel: ACTION_LABELS[actionKey] ?? actionKey,
-    before: beforeSelf,
-    after: afterSelf,
-  });
+  const log = (name, label, before, after) => {
+    logEntries.push({
+      id: Date.now() + Math.random(),
+      timestamp,
+      fighterName: name,
+      actionLabel: label,
+      before,
+      after,
+    });
+  };
 
-  // --- Build new fighters array ---
-  let newFighters = fighters.map((f, i) => {
-    if (i === fighterIndex) {
-      return {
-        ...f,
-        ...afterSelf,
-        powerTurnAvailable,
-      };
-    }
-    return f;
-  });
+  // Work on shallow-cloned copies
+  let f = fighters.map(x => ({ ...x }));
 
-  // --- Attack: automatically apply opponent response based on stance gap ---
-  if (actionKey === 'attack' && settings.automaticResolution !== false) {
-    const STANCE_ORDER = ['high', 'mid', 'low'];
-    const opponentIndex = 1 - fighterIndex;
-    const opponent = newFighters[opponentIndex];
+  switch (actionKey) {
 
-    const attackerStance = fighter.stance ?? 'mid';
-    const opponentStance = opponent.stance ?? 'mid';
-    const distance = Math.abs(
-      STANCE_ORDER.indexOf(attackerStance) - STANCE_ORDER.indexOf(opponentStance)
-    );
+    // ── Start Turn ─────────────────────────────────────────────────────────────
+    case 'startOfTurn': {
+      const before = snap(f[fighterIndex]);
 
-    // 0 apart → direct block, 1 apart → indirect block, 2 apart → getting hit
-    const responseKey = distance === 0 ? 'directBlock'
-      : distance === 1 ? 'indirectBlock'
-      : 'gettingHit';
+      // Decay momentum if power turn wasn't consumed
+      let momentum = f[fighterIndex].momentum;
+      if (f[fighterIndex].powerTurnAvailable) {
+        momentum = Math.min(momentum, MOMENTUM_DECAY_VALUE);
+      }
 
-    const oppIsAt0 = opponent.stamina <= 0;
-    const responseCost = (oppIsAt0
-      ? settings.actionCosts.staminaAt0
-      : settings.actionCosts.staminaAbove0)[responseKey];
+      // Check power turn availability BEFORE adding stamina (and after decay)
+      const powerTurnAvailable = momentum >= MAX_MOMENTUM;
 
-    if (responseCost) {
-      const beforeOpp = { health: opponent.health, stamina: opponent.stamina, momentum: opponent.momentum };
-      const afterOpp = {
-        health:   clamp(opponent.health   + responseCost.health,   0, settings.maxHealth),
-        stamina:  clamp(opponent.stamina  + responseCost.stamina,  0, settings.maxStamina),
-        momentum: clamp(opponent.momentum + responseCost.momentum, 0, settings.maxMomentum),
-      };
+      // +4 stamina
+      const newStamina = clamp(f[fighterIndex].stamina + 4, 0, maxStamina(f[fighterIndex]));
 
-      // --- Stance guard meters: only on block, not on hit ---
-      const ADJACENT = { high: ['mid'], mid: ['high', 'low'], low: ['mid'] };
-      const maxGuard = settings.maxStanceGuard ?? 3;
-      let newStanceGuard = { ...(opponent.stanceGuard ?? { high: 0, mid: 0, low: 0 }) };
-      let newStartTurns = opponent.startTurnsToGuardReset ?? 0;
-
-      if (responseKey === 'directBlock' || responseKey === 'indirectBlock') {
-        for (const s of (ADJACENT[attackerStance] ?? [])) {
-          const cur = newStanceGuard[s] ?? 0;
-          if (cur < maxGuard) {
-            newStanceGuard[s] = cur + 1;
-            if (newStanceGuard[s] >= maxGuard) {
-              newStartTurns = 2; // broken: need 2 start-turns to reset
-            }
-          }
+      // Tick guard reset countdown (counts this fighter's own start turns)
+      let newGuard = { ...(f[fighterIndex].stanceGuard ?? { high: 0, mid: 0, low: 0 }) };
+      let newCountdown = f[fighterIndex].startTurnsToGuardReset ?? 0;
+      if (newCountdown > 0) {
+        newCountdown -= 1;
+        if (newCountdown === 0) {
+          const mg = maxGuard(f[fighterIndex]);
+          STANCES.forEach(s => { if (newGuard[s] >= mg) newGuard[s] = 0; });
         }
       }
 
-      newFighters = newFighters.map((f, i) =>
-        i === opponentIndex
-          ? { ...f, ...afterOpp, stanceGuard: newStanceGuard, startTurnsToGuardReset: newStartTurns }
-          : f
-      );
-
-      const responseLabel = {
-        directBlock:   'Direct Block (auto)',
-        indirectBlock: 'Indirect Block (auto)',
-        gettingHit:    'Getting Hit (auto)',
-      }[responseKey];
-
-      logEntries.push({
-        id: Date.now() + Math.random() + 0.5,
-        timestamp: logEntries[0].timestamp,
-        fighterName: opponent.name,
-        actionLabel: responseLabel,
-        before: beforeOpp,
-        after: afterOpp,
-      });
+      f[fighterIndex] = {
+        ...f[fighterIndex],
+        stamina: newStamina,
+        momentum,
+        actionsUsed: 0,
+        powerTurnAvailable,
+        extraMoveAvailable: false,
+        flowBonusActive: false,
+        stanceGuard: newGuard,
+        startTurnsToGuardReset: newCountdown,
+      };
+      log(fighter.name, 'Start Turn', before, snap(f[fighterIndex]));
+      break;
     }
-  }
 
-  // --- Start of turn: tick stance guard reset countdown ---
-  if (actionKey === 'startOfTurn') {
-    const f = newFighters[fighterIndex];
-    const turnsLeft = f.startTurnsToGuardReset ?? 0;
-    if (turnsLeft > 0) {
-      const newTurns = turnsLeft - 1;
-      const maxGuard = settings.maxStanceGuard ?? 3;
-      let newStanceGuard = { ...(f.stanceGuard ?? { high: 0, mid: 0, low: 0 }) };
-      if (newTurns === 0) {
-        // Reset every stance that was broken (at max)
-        Object.keys(newStanceGuard).forEach(s => {
-          if (newStanceGuard[s] >= maxGuard) newStanceGuard[s] = 0;
-        });
+    // ── Move ───────────────────────────────────────────────────────────────────
+    case 'moveForward':
+    case 'moveBackward': {
+      const hasExtraMove = f[fighterIndex].extraMoveAvailable;
+
+      // Check action budget (extra move token bypasses actionsUsed)
+      if (!hasExtraMove && f[fighterIndex].actionsUsed >= 2) return null;
+      if (f[fighterIndex].stamina <= 0) return null;
+
+      const curPos  = f[fighterIndex].position;
+      const oppPos  = f[1 - fighterIndex].position;
+      const towardDir = oppPos > curPos ? 1 : -1;
+      const dir     = actionKey === 'moveForward' ? towardDir : -towardDir;
+      const newPos  = curPos + dir;
+
+      if (newPos === oppPos || newPos < 0 || newPos >= GRID_SIZE) return null;
+
+      const cost = withClassBonus(f[fighterIndex], -1);
+      const before = snap(f[fighterIndex]);
+
+      f[fighterIndex] = {
+        ...f[fighterIndex],
+        stamina: clamp(f[fighterIndex].stamina + cost, 0, maxStamina(f[fighterIndex])),
+        position: newPos,
+        actionsUsed: hasExtraMove ? f[fighterIndex].actionsUsed : f[fighterIndex].actionsUsed + 1,
+        extraMoveAvailable: false,
+      };
+      log(fighter.name, actionKey === 'moveForward' ? 'Move Forward' : 'Move Backward', before, snap(f[fighterIndex]));
+      break;
+    }
+
+    // ── Stance (cost only; actual new stance set by reducer) ──────────────────
+    case 'stance': {
+      if (f[fighterIndex].actionsUsed >= 2) return null;
+      if (f[fighterIndex].stamina <= 0) return null;
+
+      const cost = withClassBonus(f[fighterIndex], -1);
+      const before = snap(f[fighterIndex]);
+
+      f[fighterIndex] = {
+        ...f[fighterIndex],
+        stamina: clamp(f[fighterIndex].stamina + cost, 0, maxStamina(f[fighterIndex])),
+        actionsUsed: f[fighterIndex].actionsUsed + 1,
+      };
+      log(fighter.name, 'Stance Change', before, snap(f[fighterIndex]));
+      break;
+    }
+
+    // ── Attack ─────────────────────────────────────────────────────────────────
+    case 'attack': {
+      if (f[fighterIndex].actionsUsed >= 2) return null;
+      if (f[fighterIndex].stamina <= 0) return null;
+
+      const range = getRange(f[fighterIndex], f[1 - fighterIndex]);
+      const weapon = f[fighterIndex].weapon ?? 'sword';
+      const effectiveness = getEffectiveness(weapon, range);
+      if (effectiveness === 'ineffective') return null;
+
+      let cost = effectiveness === 'lessEffective'
+        ? ATTACK_STAMINA_LESS_EFFECTIVE
+        : ATTACK_STAMINA_BASE;
+
+      // Flow bonus: -3 ST on this attack (if active)
+      if (f[fighterIndex].flowBonusActive) cost += 3;
+
+      cost = withClassBonus(f[fighterIndex], cost);
+
+      const beforeAttacker = snap(f[fighterIndex]);
+      const wasPowerGuard = f[fighterIndex].powerGuardActive;
+
+      f[fighterIndex] = {
+        ...f[fighterIndex],
+        stamina:      clamp(f[fighterIndex].stamina  + cost,               0, maxStamina(f[fighterIndex])),
+        momentum:     clamp(f[fighterIndex].momentum + ATTACK_MOMENTUM_GAIN, 0, MAX_MOMENTUM),
+        actionsUsed:  f[fighterIndex].actionsUsed + 1,
+        // powerTurnAvailable is NOT cleared here — it persists until spendPowerTurn or next startOfTurn
+        powerGuardActive: false,
+        flowBonusActive: false,
+      };
+      const rangeLabel = effectiveness === 'lessEffective' ? ' (less effective range)' : '';
+      log(fighter.name, `Attack${rangeLabel}`, beforeAttacker, snap(f[fighterIndex]));
+
+      // ── Auto-resolve defender response ────────────────────────────────────
+      if (settings?.automaticResolution !== false) {
+        const attackerStance = fighter.stance ?? 'mid';
+        const defenderStance = f[1 - fighterIndex].stance ?? 'mid';
+        const weaponDef = WEAPONS[weapon];
+        const defMG = maxGuard(f[1 - fighterIndex]);
+
+        // Guard break override: check if defender's guard at attacker's stance is broken
+        const guardAtAttackerStance = f[1 - fighterIndex].stanceGuard?.[attackerStance] ?? 0;
+        const isGuardBreakHit = guardAtAttackerStance >= defMG;
+
+        const hitType = isGuardBreakHit ? 'cleanHit' : getHitType(attackerStance, defenderStance);
+        const hitEffect = HIT_EFFECTS[hitType] ?? {};
+
+        // Damage
+        const baseDmg = weaponDef?.damage?.[hitType] ?? 0;
+        let healthDelta = -baseDmg;
+        if (isGuardBreakHit) healthDelta -= GUARD_BREAK_BONUS_DAMAGE;
+        // Less effective: -1 damage (min 0 impact on health)
+        if (effectiveness === 'lessEffective' && healthDelta < 0) {
+          healthDelta = Math.min(healthDelta + 1, 0);
+        }
+
+        // Apply guard pressure
+        const pressuredStances = GUARD_PRESSURE_ON[attackerStance] ?? [];
+        let newDefGuard = { ...(f[1 - fighterIndex].stanceGuard ?? { high: 0, mid: 0, low: 0 }) };
+        let newCountdown = f[1 - fighterIndex].startTurnsToGuardReset ?? 0;
+        const guardPressure = wasPowerGuard ? 2 : 1; // Heavy special: double pressure
+        let didBreak = false;
+        for (const s of pressuredStances) {
+          newDefGuard[s] = Math.min((newDefGuard[s] ?? 0) + guardPressure, defMG);
+          if (newDefGuard[s] >= defMG) didBreak = true;
+        }
+        if (didBreak && newCountdown === 0) newCountdown = 2;
+
+        // Spear: attacker gets +1 MO on clean hit
+        if (hitType === 'cleanHit' && weaponDef?.cleanHitMomentumBonus) {
+          f[fighterIndex] = {
+            ...f[fighterIndex],
+            momentum: clamp(f[fighterIndex].momentum + weaponDef.cleanHitMomentumBonus, 0, MAX_MOMENTUM),
+          };
+        }
+
+        const beforeDef = snap(f[1 - fighterIndex]);
+        f[1 - fighterIndex] = {
+          ...f[1 - fighterIndex],
+          health:   clamp(f[1 - fighterIndex].health   + healthDelta,          0, maxHealth(f[1 - fighterIndex])),
+          stamina:  clamp(f[1 - fighterIndex].stamina  + (hitEffect.stamina ?? 0),  0, maxStamina(f[1 - fighterIndex])),
+          momentum: clamp(f[1 - fighterIndex].momentum + (hitEffect.momentum ?? 0), 0, MAX_MOMENTUM),
+          stanceGuard: newDefGuard,
+          startTurnsToGuardReset: newCountdown,
+        };
+
+        const hitLabel = isGuardBreakHit
+          ? 'Guard Break Hit (auto)'
+          : { directBlock: 'Direct Block (auto)', indirectBlock: 'Indirect Block (auto)', cleanHit: 'Clean Hit (auto)' }[hitType];
+
+        log(opponent.name, hitLabel, beforeDef, snap(f[1 - fighterIndex]));
       }
-      newFighters = newFighters.map((ff, i) =>
-        i === fighterIndex
-          ? { ...ff, stanceGuard: newStanceGuard, startTurnsToGuardReset: newTurns }
-          : ff
-      );
+      break;
     }
+
+    // ── Swap Position ──────────────────────────────────────────────────────────
+    case 'swapPosition': {
+      if (f[fighterIndex].actionsUsed >= 2) return null;
+
+      const range = getRange(f[fighterIndex], f[1 - fighterIndex]);
+      if (range !== 1) return null;
+
+      const cost = withClassBonus(f[fighterIndex], -6);
+      if (f[fighterIndex].stamina + cost < 0) return null;
+
+      const before    = snap(f[fighterIndex]);
+      const beforeOpp = snap(f[1 - fighterIndex]);
+      const myPos  = f[fighterIndex].position;
+      const oppPos = f[1 - fighterIndex].position;
+
+      f[fighterIndex] = {
+        ...f[fighterIndex],
+        stamina:     clamp(f[fighterIndex].stamina + cost, 0, maxStamina(f[fighterIndex])),
+        momentum:    0,
+        position:    oppPos,
+        actionsUsed: f[fighterIndex].actionsUsed + 1,
+      };
+      f[1 - fighterIndex] = { ...f[1 - fighterIndex], position: myPos };
+
+      log(fighter.name,  'Swap Position',          before,    snap(f[fighterIndex]));
+      log(opponent.name, 'Swap (position effect)', beforeOpp, snap(f[1 - fighterIndex]));
+      break;
+    }
+
+    // ── Rest ───────────────────────────────────────────────────────────────────
+    case 'rest': {
+      if (f[fighterIndex].actionsUsed >= 2) return null;
+      const isFirst = f[fighterIndex].actionsUsed === 0;
+      const before = snap(f[fighterIndex]);
+
+      f[fighterIndex] = {
+        ...f[fighterIndex],
+        stamina:     clamp(f[fighterIndex].stamina + (isFirst ? 2 : 1), 0, maxStamina(f[fighterIndex])),
+        actionsUsed: isFirst ? 2 : f[fighterIndex].actionsUsed + 1,
+      };
+      log(fighter.name, isFirst ? 'Rest — turn ends (+2 ST)' : 'Rest (+1 ST)', before, snap(f[fighterIndex]));
+      break;
+    }
+
+    // ── Spend Power Turn ───────────────────────────────────────────────────────
+    case 'spendPowerTurn': {
+      if (!f[fighterIndex].powerTurnAvailable) return null;
+      if (f[fighterIndex].actionsUsed < 2) return null; // only at end of turn
+
+      const before = snap(f[fighterIndex]);
+      f[fighterIndex] = {
+        ...f[fighterIndex],
+        momentum:          0,
+        actionsUsed:       0,
+        powerTurnAvailable: false,
+      };
+      log(fighter.name, 'Power Turn — bonus turn', before, snap(f[fighterIndex]));
+      break;
+    }
+
+    // ── Flow Attack ────────────────────────────────────────────────────────────
+    case 'flowAttack': {
+      if (f[fighterIndex].momentum < FLOW_ATTACK_THRESHOLD) return null;
+      if (f[fighterIndex].actionsUsed >= 2) return null;
+      if (f[fighterIndex].stamina <= 0) return null;
+
+      // Flow attack: costs -3 MO and -1 ST (stance cost), grants flow bonus
+      const cost = withClassBonus(f[fighterIndex], -1);
+      const before = snap(f[fighterIndex]);
+
+      f[fighterIndex] = {
+        ...f[fighterIndex],
+        stamina:        clamp(f[fighterIndex].stamina  + cost, 0, maxStamina(f[fighterIndex])),
+        momentum:       clamp(f[fighterIndex].momentum - 3,    0, MAX_MOMENTUM),
+        actionsUsed:    f[fighterIndex].actionsUsed + 1,
+        flowBonusActive: true, // next attack costs 3 less ST
+      };
+      log(fighter.name, 'Flow Attack (stance + flow bonus)', before, snap(f[fighterIndex]));
+      break;
+    }
+
+    // ── Light Special: Extra Move ──────────────────────────────────────────────
+    case 'lightExtraMove': {
+      if (f[fighterIndex].weightClass !== 'light') return null;
+      if (f[fighterIndex].stamina < 3)   return null;
+      if (f[fighterIndex].momentum < 1)  return null;
+
+      const before = snap(f[fighterIndex]);
+      f[fighterIndex] = {
+        ...f[fighterIndex],
+        stamina:           clamp(f[fighterIndex].stamina  - 3, 0, maxStamina(f[fighterIndex])),
+        momentum:          clamp(f[fighterIndex].momentum - 1, 0, MAX_MOMENTUM),
+        extraMoveAvailable: true,
+      };
+      log(fighter.name, 'Extra Move Token (Light)', before, snap(f[fighterIndex]));
+      break;
+    }
+
+    // ── Heavy Special: Power Guard ─────────────────────────────────────────────
+    case 'heavyPowerGuard': {
+      if (f[fighterIndex].weightClass !== 'heavy') return null;
+      if (f[fighterIndex].stamina < 3)  return null;
+      if (f[fighterIndex].momentum < 2) return null;
+
+      const before = snap(f[fighterIndex]);
+      f[fighterIndex] = {
+        ...f[fighterIndex],
+        stamina:         clamp(f[fighterIndex].stamina  - 3, 0, maxStamina(f[fighterIndex])),
+        momentum:        clamp(f[fighterIndex].momentum - 2, 0, MAX_MOMENTUM),
+        powerGuardActive: true,
+      };
+      log(fighter.name, 'Power Guard (Heavy)', before, snap(f[fighterIndex]));
+      break;
+    }
+
+    // ── Manual block/hit buttons (auto-resolution OFF) ─────────────────────────
+    case 'directBlock': {
+      const before = snap(f[fighterIndex]);
+      f[fighterIndex] = {
+        ...f[fighterIndex],
+        momentum: clamp(f[fighterIndex].momentum + 2, 0, MAX_MOMENTUM),
+      };
+      log(fighter.name, 'Direct Block', before, snap(f[fighterIndex]));
+      break;
+    }
+    case 'indirectBlock': {
+      if (f[fighterIndex].stamina <= 0) return null;
+      const before = snap(f[fighterIndex]);
+      f[fighterIndex] = {
+        ...f[fighterIndex],
+        stamina:  clamp(f[fighterIndex].stamina  - 1, 0, maxStamina(f[fighterIndex])),
+        momentum: clamp(f[fighterIndex].momentum + 1, 0, MAX_MOMENTUM),
+      };
+      log(fighter.name, 'Indirect Block', before, snap(f[fighterIndex]));
+      break;
+    }
+    case 'cleanHit': {
+      const before = snap(f[fighterIndex]);
+      f[fighterIndex] = {
+        ...f[fighterIndex],
+        momentum: clamp(f[fighterIndex].momentum - 2, 0, MAX_MOMENTUM),
+        health:   clamp(f[fighterIndex].health   - 2, 0, maxHealth(f[fighterIndex])),
+      };
+      log(fighter.name, 'Clean Hit (taken)', before, snap(f[fighterIndex]));
+      break;
+    }
+    case 'incrementGuard': {
+      // Manual guard pressure (+1 to a specific stance guard)
+      // The stance is passed via the action; handled in reducer directly (not here)
+      return null;
+    }
+
+    default:
+      return null;
   }
 
-  // --- Swap position: also hit opponent momentum ---
-  if (actionKey === 'swapPosition') {
-    const opponentIndex = 1 - fighterIndex;
-    const opponent = newFighters[opponentIndex];
-    const beforeOpponent = { health: opponent.health, stamina: opponent.stamina, momentum: opponent.momentum };
-    const newOpponentMomentum = clamp(
-      opponent.momentum + settings.swapOpponentMomentum,
-      0,
-      settings.maxMomentum
-    );
-    const afterOpponent = { ...beforeOpponent, momentum: newOpponentMomentum };
-
-    newFighters = newFighters.map((f, i) => {
-      if (i === opponentIndex) return { ...f, momentum: newOpponentMomentum };
-      return f;
-    });
-
-    logEntries.push({
-      id: Date.now() + Math.random() + 0.5,
-      timestamp: logEntries[0].timestamp,
-      fighterName: opponent.name,
-      actionLabel: 'Swap (opponent effect)',
-      before: beforeOpponent,
-      after: afterOpponent,
-    });
-  }
-
-  return { newFighters, logEntries };
-}
-
-/**
- * Scales a meter value proportionally when the maximum changes.
- */
-export function scaleMeterValue(current, oldMax, newMax) {
-  if (oldMax === 0) return newMax;
-  return Math.round(clamp((current / oldMax) * newMax, 0, newMax));
+  return { newFighters: f, logEntries };
 }
